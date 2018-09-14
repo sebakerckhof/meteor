@@ -212,6 +212,22 @@ Tinytest.add('minimongo - basics', test => {
   test.equal(after.d, undefined);
 });
 
+Tinytest.add('minimongo - special field characters', test => {
+  const c = new LocalCollection();
+ 
+  // As of mongo 3.6, this is valid
+  c.insert({
+    "a.b": "foo", ".b": "bar", ".": "baz", "a.$": 0, ".$": 1,
+    "arr": [{ "$": 0, ".": 1, "a.$": 2 }],
+    "nested": { "$": 0, ".": 1, "a.$": 2 },
+  });
+
+  // Don't allow fields starting with '$' on the root of the document
+  test.throws(() => {
+    c.insert({ "$.a": "foo" })
+  });
+});
+
 Tinytest.add('minimongo - error - no options', test => {
   try {
     throw MinimongoError('Not fun to have errors');
@@ -3069,9 +3085,46 @@ Tinytest.add('minimongo - modify', test => {
 
   // XXX test case sensitivity of modops
   // XXX for each (most) modop, test that it performs a deep copy
-});
 
-// XXX test update() (selecting docs, multi, upsert..)
+
+  // Test special field names (since mongo 3.6)
+  upsert({}, 
+    { "a.b": "foo", ".b": 1, ".": 2, "a.$": 0, "arr": [{ "a.$": 2 }], ".$": 1},
+    { "a.b": "foo", ".b": 1, ".": 2, "a.$": 0, "arr": [{ "a.$": 2 }], ".$": 1 });
+  
+  // Only root level gets expanded
+  upsert({}, 
+    { "$set": { "a": { "b.c": "foo" } } },
+    { a: { "b.c": "foo" } });
+
+  upsert({}, 
+    { "$set": { "a.b.c": { "d.f": "foo" } } },
+    { a: { b: { c: { "d.f": "foo" } } } });
+ 
+  upsert({}, 
+    { "$set": { "a.b.c": { "d.f.$": "foo" } } },
+    { a: { b: { c: { "d.f.$": "foo" } } } });
+  
+  upsert({}, 
+    { "$push": { "a.b.c": { "d.f": "foo" } } },
+    { a: { b: { c: [{ "d.f": "foo" }] } } });
+   
+  upsert({}, 
+    { "$push": { "a.b.c": { "d.f.$": "foo" } } },
+    { a: { b: { c: [{ "d.f.$": "foo" }] } } });
+
+  // Only for insert we can have a dollar prefixed field inside an array
+  upsertException({}, { arr: [{ a: { "$.a": "foo" } }] });
+  
+  // Using a modifier we can never have dollar prefixed fields
+  upsertException({}, { $set: { arr: [{ a: { "$.a": "foo" } }] } });
+  upsertException({}, { $set: { "a.b": { "$.d": "foo" } } });
+  upsertException({}, { $set: { "$.b": "foo" } });
+  upsertException({}, { $push: { arr: [{ a: { "$.a": "foo" } }] } });
+  upsertException({}, { $push: { "a.b": { "$.d": "foo" } } });
+  upsertException({}, { $push: { "$.b": "foo" } });
+
+});
 
 Tinytest.add('minimongo - observe ordered', test => {
   const operations = [];
