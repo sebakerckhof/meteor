@@ -1179,7 +1179,7 @@ LocalCollection._modify = (doc, modifier, options = {}) => {
         `{_id: "${modifier._id}"}`
       );
     }
-
+    
     // replace the whole document
     assertHasValidFieldNames(modifier);
   }
@@ -1663,26 +1663,6 @@ const MODIFIERS = {
       }
     }
   },
-  $pushAll(target, field, arg) {
-    if (!(typeof arg === 'object' && arg instanceof Array)) {
-      throw MinimongoError('Modifier $pushAll/pullAll allowed for arrays only');
-    }
-
-    assertHasValidFieldNames(arg);
-
-    const toPush = target[field];
-
-    if (toPush === undefined) {
-      target[field] = arg;
-    } else if (!(toPush instanceof Array)) {
-      throw MinimongoError(
-        'Cannot apply $pushAll modifier to non-array',
-        {field}
-      );
-    } else {
-      toPush.push(...arg);
-    }
-  },
   $addToSet(target, field, arg) {
     let isEach = false;
 
@@ -1777,7 +1757,7 @@ const MODIFIERS = {
   $pullAll(target, field, arg) {
     if (!(typeof arg === 'object' && arg instanceof Array)) {
       throw MinimongoError(
-        'Modifier $pushAll/pullAll allowed for arrays only',
+        'Modifier $pullAll allowed for arrays only',
         {field}
       );
     }
