@@ -212,22 +212,6 @@ Tinytest.add('minimongo - basics', test => {
   test.equal(after.d, undefined);
 });
 
-Tinytest.add('minimongo - special field characters', test => {
-  const c = new LocalCollection();
- 
-  // As of mongo 3.6, this is valid
-  c.insert({
-    "a.b": "foo", ".b": "bar", ".": "baz", "a.$": 0, ".$": 1,
-    "arr": [{ "$": 0, ".": 1, "a.$": 2 }],
-    "nested": { "$": 0, ".": 1, "a.$": 2 },
-  });
-
-  // Don't allow fields starting with '$' on the root of the document
-  test.throws(() => {
-    c.insert({ "$.a": "foo" })
-  });
-});
-
 Tinytest.add('minimongo - error - no options', test => {
   try {
     throw MinimongoError('Not fun to have errors');
@@ -2494,7 +2478,6 @@ Tinytest.add('minimongo - modify', test => {
 
   exception({a: 12}, {$a: 13}); // invalid operator
   exception({a: 12}, {b: {$a: 13}});
-  exception({a: 12}, {b: {'a.b': 13}});
   exception({a: 12}, {b: {'\0a': 13}});
 
   // keys
@@ -2518,7 +2501,7 @@ Tinytest.add('minimongo - modify', test => {
   exception({a: null}, {$set: {'a.b': 99}});
   modify({a: {}}, {$set: {'a.3': 12}}, {a: {3: 12}});
   modify({a: []}, {$set: {'a.3': 12}}, {a: [null, null, null, 12]});
-  exception({}, {$set: {'': 12}}); // tested on mongo
+  modify({}, {$set: {'': 12}}, {'': 12}); // tested on mongo
   exception({}, {$set: {'.': 12}}); // tested on mongo
   exception({}, {$set: {'a.': 12}}); // tested on mongo
   exception({}, {$set: {'. ': 12}}); // tested on mongo
@@ -2716,7 +2699,6 @@ Tinytest.add('minimongo - modify', test => {
   exception({ a: {} }, { $set: { a: { c:
               [{ b: { $a: 1 } }] } } });
   exception({a: {}}, {$set: {a: {'\0a': 1}}});
-  exception({a: {}}, {$set: {a: {'a.b': 1}}});
 
   // $unset
   modify({}, {$unset: {a: 1}}, {});
@@ -2794,11 +2776,11 @@ Tinytest.add('minimongo - modify', test => {
   exception({}, {$push: {'\0a': 1}});
   exception({}, {$push: {a: {$a: 1}}});
   exception({}, {$push: {a: {$each: [{$a: 1}]}}});
-  exception({}, {$push: {a: {$each: [{'a.b': 1}]}}});
+  modify({}, {$push: {a: {$each: [{'a.b': 1}]}}}, {a: [{'a.b': 1}]}); // as of mongo 3.6
   exception({}, {$push: {a: {$each: [{'\0a': 1}]}}});
-  modify({}, {$push: {a: {$each: [{'': 1}]}}}, {a: [ { '': 1 } ]});
+  modify({}, {$push: {a: {$each: [{'': 1}]}}}, {a: [ { '': 1 } ]}, {a: [{'': 1}]}); // as of mongo 3.6
   modify({}, {$push: {a: {$each: [{' ': 1}]}}}, {a: [ { ' ': 1 } ]});
-  exception({}, {$push: {a: {$each: [{'.': 1}]}}});
+  modify({}, {$push: {a: {$each: [{'.': 1}]}}}, {a: [{'.': 1}]});
 
   // #issue 5167
   // $push $slice with positive numbers
@@ -2809,27 +2791,6 @@ Tinytest.add('minimongo - modify', test => {
   modify({a: [1, 2, 3]}, {$push: {a: {$each: [4, 5], $slice: 4}}}, {a: [1, 2, 3, 4]});
   modify({a: [1, 2, 3]}, {$push: {a: {$each: [4, 5], $slice: 5}}}, {a: [1, 2, 3, 4, 5]});
   modify({a: [1, 2, 3]}, {$push: {a: {$each: [4, 5], $slice: 10}}}, {a: [1, 2, 3, 4, 5]});
-
-
-  // $pushAll
-  modify({}, {$pushAll: {a: [1]}}, {a: [1]});
-  modify({a: []}, {$pushAll: {a: [1]}}, {a: [1]});
-  modify({a: [1]}, {$pushAll: {a: [2]}}, {a: [1, 2]});
-  modify({}, {$pushAll: {a: [1, 2]}}, {a: [1, 2]});
-  modify({a: []}, {$pushAll: {a: [1, 2]}}, {a: [1, 2]});
-  modify({a: [1]}, {$pushAll: {a: [2, 3]}}, {a: [1, 2, 3]});
-  modify({}, {$pushAll: {a: []}}, {a: []});
-  modify({a: []}, {$pushAll: {a: []}}, {a: []});
-  modify({a: [1]}, {$pushAll: {a: []}}, {a: [1]});
-  exception({a: true}, {$pushAll: {a: [1]}});
-  exception({a: []}, {$pushAll: {a: 1}});
-  modify({a: []}, {$pushAll: {'a.1': [99]}}, {a: [null, [99]]});
-  modify({a: []}, {$pushAll: {'a.1': []}}, {a: [null, []]});
-  modify({a: {}}, {$pushAll: {'a.x': [99]}}, {a: {x: [99]}});
-  modify({a: {}}, {$pushAll: {'a.x': []}}, {a: {x: []}});
-  exception({a: [1]}, {$pushAll: {a: [{$a: 1}]}});
-  exception({a: [1]}, {$pushAll: {a: [{'\0a': 1}]}});
-  exception({a: [1]}, {$pushAll: {a: [{'a.b': 1}]}});
 
   // $addToSet
   modify({}, {$addToSet: {a: 1}}, {a: [1]});
@@ -2855,18 +2816,21 @@ Tinytest.add('minimongo - modify', test => {
 
   // invalid field names
   exception({}, {$addToSet: {a: {$b: 1}}});
-  exception({}, {$addToSet: {a: {'a.b': 1}}});
-  exception({}, {$addToSet: {a: {'a.': 1}}});
+  modify({}, {$addToSet: {a: {'a.b': 1}}}, { a: [{ 'a.b': 1 }] });
+  modify({}, {$addToSet: {a: {'a.': 1}}}, { a: [{ 'a.': 1 }] });
   exception({}, {$addToSet: {a: {'\u0000a': 1}}});
   exception({a: [1, 2]}, {$addToSet: {a: {$each: [3, 1, {$a: 1}]}}});
   exception({a: [1, 2]}, {$addToSet: {a: {$each: [3, 1, {'\0a': 1}]}}});
   exception({a: [1, 2]}, {$addToSet: {a: {$each: [3, 1, [{$a: 1}]]}}});
-  exception({a: [1, 2]}, {$addToSet: {a: {$each: [3, 1, [{b: {c: [{a: 1}, {'d.s': 2}]}}]]}}});
+  modify({a: [1, 2]},
+    {$addToSet: {a: {$each: [3, 1, [{b: {c: [{a: 1}, {'d.s': 2}]}}]]}}},
+    {"a" : [1.0, 2.0, 3.0, [{"b" : {"c" : [ {"a" : 1.0}, {"d.s" : 2.0}]}}]]});
   exception({a: [1, 2]}, {$addToSet: {a: {b: [3, 1, [{b: {c: [{a: 1}, {'d.s': 2}]}}]]}}});
   // $each is first element and thus an operator
   modify({a: [1, 2]}, {$addToSet: {a: {$each: [3, 1, 4], b: 12}}}, {a: [ 1, 2, 3, 4 ]});
   // this should fail because $each is now a field name (not first in object) and thus invalid field name with $
-  exception({a: [1, 2]}, {$addToSet: {a: {b: 12, $each: [3, 1, 4]}}});
+  modify({a: [1, 2]}, {$addToSet: {a: {b: 12, $each: [3, 1, 4]}}},
+    {a: [1.0, 2.0,{b:[ 3.0, 1.0,[{b:{c:[{a: 1.0},{"d.s" : 2.0}]}}]]}]});
 
   // $pop
   modify({}, {$pop: {a: 1}}, {}); // tested
@@ -2908,18 +2872,6 @@ Tinytest.add('minimongo - modify', test => {
   // probably same refactoring as $elemMatch?
   // modify({a: [1, 2, 3, 4]}, {$pull: {$gt: 2}}, {a: [1,2]}); fails!
 
-  // $pullAll
-  modify({}, {$pullAll: {a: [1]}}, {});
-  modify({a: [1, 2, 3]}, {$pullAll: {a: []}}, {a: [1, 2, 3]});
-  modify({a: [1, 2, 3]}, {$pullAll: {a: [2]}}, {a: [1, 3]});
-  modify({a: [1, 2, 3]}, {$pullAll: {a: [2, 1]}}, {a: [3]});
-  modify({a: [1, 2, 3]}, {$pullAll: {a: [1, 2]}}, {a: [3]});
-  modify({}, {$pullAll: {'a.b.c': [2]}}, {});
-  exception({a: true}, {$pullAll: {a: [1]}});
-  exception({a: [1, 2, 3]}, {$pullAll: {a: 1}});
-  modify({x: [{a: 1}, {a: 1, b: 2}]}, {$pullAll: {x: [{a: 1}]}},
-    {x: [{a: 1, b: 2}]});
-
   // $rename
   modify({}, {$rename: {a: 'b'}}, {});
   modify({a: [12]}, {$rename: {a: 'b'}}, {b: [12]});
@@ -2938,6 +2890,7 @@ Tinytest.add('minimongo - modify', test => {
   // modify({a: {b: 12}, q: []}, {$rename: {'q.1.j': 'x'}},
   //        {a: {b: 12}, x: []}); // tested
   exception({}, {$rename: {a: 'a'}});
+  exception({}, {$rename: {a: 'a.b'}});
   exception({}, {$rename: {'a.b': 'a.b'}});
   modify({a: 12, b: 13}, {$rename: {a: 'b'}}, {b: 12});
   exception({a: [12]}, {$rename: {a: '$b'}});
@@ -2955,7 +2908,6 @@ Tinytest.add('minimongo - modify', test => {
   upsertException({a: 0}, {$setOnInsert: {'\0a': 12}});
   upsert({a: 0}, {$setOnInsert: {b: {a: 1}}}, {a: 0, b: {a: 1}});
   upsertException({a: 0}, {$setOnInsert: {b: {$a: 1}}});
-  upsertException({a: 0}, {$setOnInsert: {b: {'a.b': 1}}});
   upsertException({a: 0}, {$setOnInsert: {b: {'\0a': 1}}});
 
   // Test for https://github.com/meteor/meteor/issues/8775.
@@ -3039,7 +2991,8 @@ Tinytest.add('minimongo - modify', test => {
   upsert({"a": /a/}, {"$set": {"c": "foo"}}, {"c": "foo"})
    // Test nested fields
   upsert({"$and": [{"a.a": "foo"}, {"$or": [{"a.b": "baz"}]}]}, {"$set": {"c": "foo"}}, {"a": {"a": "foo", "b": "baz"}, "c": "foo"})
-   // Test for https://github.com/meteor/meteor/issues/5294
+  upsert({"$and": [{"a.a": "foo"}, {"$or": [{"a.b.c": { "d.f": "baz"}}]}]}, {"$set": {"c": "foo"}}, {"a": {"a": "foo", "b": { "c": { "d.f": "baz" } } }, "c": "foo"})
+  // Test for https://github.com/meteor/meteor/issues/5294
   upsert({"a": {"$ne": 444}}, {"$push": {"a": 123}}, {"a": [123]})
    // Mod takes precedence over query
   upsert({"a": "foo"}, {"a": "bar"}, {"a": "bar"})
@@ -3052,8 +3005,8 @@ Tinytest.add('minimongo - modify', test => {
   upsert({key: 123, keyName: '321'}, {$set: {name: 'Todo'}}, {key: 123, keyName: '321', name: 'Todo'});
   upsertException({key: 123, "key.name": '321'}, {$set:{}});
 
-  // Nested fields don't work with literal objects
-  upsertException({"a": {}, "a.b": "foo"}, {});
+  // Works since mongo 3.6
+  upsert({"a": {}, "a.b": "foo"}, {}, {});
    // You can't have an ambiguous ID
   upsertException({"_id":"foo"}, {"_id":"bar"});
   upsertException({"_id":"foo"}, {"$set":{"_id":"bar"}});
@@ -3061,8 +3014,6 @@ Tinytest.add('minimongo - modify', test => {
   upsertException({"$and": [{"a": "foo"}, {"a": "foo"}]}, {}); //not even with same value
   upsertException({"a": {"$all": ["foo", "bar"]}}, {});
   upsertException({"$and": [{"a": {"$eq": "foo"}}, {"$or": [{"a": {"$all": ["bar"]}}]}]}, {});
-   // You can't have nested dotted fields
-  upsertException({"a": {"foo.bar": "baz"}}, {});
    // You can't have dollar-prefixed fields above the first level (logical operators not counted)
   upsertException({"a": {"a": {"$eq": "foo"}}}, {});
   upsertException({"a": {"a": {"$exists": true}}}, {});
@@ -3880,27 +3831,17 @@ Tinytest.add('minimongo - cannot insert using invalid field names', test => {
   // Quick test to make sure field values with dots are allowed
   collection.insert({ a: 'b.c' });
 
-  // Verify top level dot-field inserts are prohibited
-  ['a.b', '.b', 'a.', 'a.b.c'].forEach((field) => {
-    test.throws(() => {
-      collection.insert({ [field]: 'c' });
-    }, `Key ${field} must not contain '.'`);
-  });
-
-  // Verify nested dot-field inserts are prohibited
-  test.throws(() => {
-    collection.insert({ a: { b: { 'c.d': 'e' } } });
-  }, "Key c.d must not contain '.'");
-
-  // Verify field names starting with $ are prohibited
+  // Verify root field names starting with $ are prohibited
   test.throws(() => {
     collection.insert({ $a: 'b' });
   }, "Key $a must not start with '$'");
 
-  // Verify nested field names starting with $ are prohibited
-  test.throws(() => {
-    collection.insert({ a: { b: { $c: 'd' } } });
-  }, "Key $c must not start with '$'");
+  // As of mongo 3.6, this is valid
+  collection.insert({
+    "a.b": "foo", ".b": "bar", ".": "baz", "a.$": 0, ".$": 1,
+    "arr": [{ "$": 0, ".": 1, "a.$": 2 }],
+    "nested": { "$": 0, ".": 1, "a.$": 2 },
+  });
 
   // Verify top level fields with null characters are prohibited
   ['\0a', 'a\0', 'a\0b', '\u0000a', 'a\u0000', 'a\u0000b'].forEach((field) => {
