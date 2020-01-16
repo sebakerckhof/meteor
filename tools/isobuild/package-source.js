@@ -833,10 +833,10 @@ _.extend(PackageSource.prototype, {
     }
   }),
 
-  _readAndWatchDirectory(relDir, watchSet, {include, exclude, names}) {
+  _readAndWatchDirectory(relDir, watchSet, {include, exclude, names, dontWatch}) {
     return watch.readAndWatchDirectory(watchSet, {
       absPath: files.pathJoin(this.sourceRoot, relDir),
-      include, exclude, names
+      include, exclude, names, dontWatch
     }).map(name => files.pathJoin(relDir, name));
   },
 
@@ -1296,12 +1296,14 @@ _.extend(PackageSource.prototype, {
         }
       }
 
+      readOptions.dontWatch = 'ONLY_IMPORTS' in process.env && isApp && !inNodeModules;
       const sources = _.difference(
         self._readAndWatchDirectory(dir, watchSet, readOptions),
         depth > 0 ? [] : controlFiles
       );
 
       const subdirectories = self._readAndWatchDirectory(dir, watchSet, {
+        dontWatch: readOptions.dontWatch,
         include: [/\/$/],
         exclude: depth > 0
           ? anyLevelExcludes

@@ -85,6 +85,7 @@ type DirectoryEntry = {
   exclude: RegExp[];
   names: string[];
   contents: string[] | null;
+  dontWatch?: boolean;
 }
 
 export class WatchSet {
@@ -434,6 +435,10 @@ export class Watcher {
     // if the file is observed to be missing.
     lastStat?: Stats | null
   }> = Object.create(null);
+
+  public static explain(...args: any) {
+    console.log(...args);
+  }
 
   constructor(options: {
     watchSet: WatchSet;
@@ -808,10 +813,6 @@ export class Watcher {
   }
 }
 
-Watcher.explain = (...args) => {
-  console.log("ONCHANGE", ...args);
-}
-
 // Given a WatchSet, returns true if it currently describes the state of the
 // disk.
 export function isUpToDate(
@@ -841,10 +842,12 @@ export function readAndWatchDirectory(
   options: DirectoryEntry,
 ) {
   const contents = readDirectory(options);
-  watchSet.addDirectory({
-    contents,
-    ...options,
-  });
+  if (!options.dontWatch) {
+    watchSet.addDirectory({
+      contents,
+      ...options,
+    });
+  }
   return contents;
 }
 
