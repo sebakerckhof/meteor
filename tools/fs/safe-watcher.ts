@@ -35,6 +35,12 @@ var NO_WATCHER_POLLING_INTERVAL =
 // file watchers, but it's to our advantage if they survive restarts.
 const WATCHER_CLEANUP_DELAY_MS = 30000;
 
+const EVENTS = {
+  RENAME: 'rename',
+  DELETE: 'delete',
+  CHANGE: 'change',
+};
+
 export type SafeWatcher = {
   close: () => void;
 }
@@ -137,7 +143,7 @@ function startNewWatcher(absPath: string): Entry {
   }
 
   function fire(event: string) {
-    if (event !== "change") {
+    if (event !== EVENTS.CHANGE) {
       // When we receive a "delete" or "rename" event, the watcher is
       // probably not going to generate any more notifications for this
       // file, so we close and nullify the watcher to ensure that
@@ -206,7 +212,7 @@ function startNewWatcher(absPath: string): Entry {
     // If a watcher event fired in the last polling interval, ignore
     // this event.
     if (Date.now() - lastWatcherEventTime > getPollingInterval()) {
-      fire("change");
+      fire(EVENTS.CHANGE);
     }
   }
 
@@ -283,15 +289,15 @@ function statWatch(
   while (oldWatcher) {
     // Make sure this callback no longer appears among the listeners for
     // this StatWatcher.
-    const countBefore = oldWatcher.stat.listenerCount("change");
+    const countBefore = oldWatcher.stat.listenerCount(EVENTS.CHANGE);
 
     // This removes at most one occurrence of the callback from the
     // listeners list...
-    oldWatcher.stat.removeListener("change", callback);
+    oldWatcher.stat.removeListener(EVENTS.CHANGE, callback);
 
     // ... so we have to keep calling it until the first time
     // it removes nothing.
-    if (oldWatcher.stat.listenerCount("change") === countBefore) {
+    if (oldWatcher.stat.listenerCount(EVENTS.CHANGE) === countBefore) {
       break;
     }
   }

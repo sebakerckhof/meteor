@@ -770,7 +770,8 @@ _.extend(AppRunner.prototype, {
     if (self.watchForChanges) {
       serverWatcher = new watch.Watcher({
         watchSet: serverWatchSet,
-        onChange: function () {
+        onChange: function (...args) {
+          watch.Watcher.explain(...args);
           self._resolvePromise("run", {
             outcome: 'changed'
           });
@@ -784,13 +785,14 @@ _.extend(AppRunner.prototype, {
       clientWatcher && clientWatcher.stop();
       clientWatcher = new watch.Watcher({
         watchSet: bundleResult.clientWatchSet,
-        onChange: function () {
+        onChange: function (...args) {
           // Pass false for the includePotentiallyUnusedFiles parameter (which
           // defaults to true) to avoid restarting the server due to changes in
           // files that were not used by the server bundle. This assumes we have
           // already called PackageSourceBatch.computeJsOutputFilesMap and
           // _watchOutputFiles to finalize the usage statuses of potentially
           // unused files in serverWatchSet, which is a safe assumption here.
+          watch.Watcher.explain(...args);
           var outcome = watch.isUpToDate(serverWatchSet, false)
                       ? 'changed-refreshable' // only a client asset has changed
                       : 'changed'; // both a client and server asset changed

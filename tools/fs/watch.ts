@@ -14,6 +14,15 @@ const _ = require("underscore");
 const WATCH_COALESCE_MS =
   +(process.env.METEOR_FILE_WATCH_COALESCE_MS || 100);
 
+const EVENTS = {
+  DIR_CREATED: 'DIR_CREATED',
+  DIR_REMOVED: 'DIR_REMOVED',
+  DIR_CONTENTS_CHANGED: 'DIR_CONTENTS_CHANGED',
+  FILE_REMOVED: 'FILE_REMOVED',
+  FILE_CREATED: 'FILE_CREATED',
+  FILE_CHANGED: 'FILE_CHANGED',
+};
+
 // Watch for changes to a set of files, and the first time that any of
 // the files change, call a user-provided callback. (If you want a
 // second callback, you'll need to create a second Watcher.)
@@ -412,7 +421,7 @@ export function readDirectory({ absPath, include, exclude, names }: {
 // All fields are private.
 export class Watcher {
   private watchSet: WatchSet;
-  private onChange: () => any;
+  private onChange: (absPath?: string, event?: string) => any;
   private stopped = false;
   private justCheckOnce = false;
   private async = false;
@@ -476,13 +485,13 @@ export class Watcher {
         return false;
       }
       // Nope, not what we expected.
-      this.fire();
+      this.fire(absPath, EVENTS.FILE_REMOVED);
       return true;
     }
 
     // File exists! Is that what we expected?
     if (oldHash === null) {
-      this.fire();
+      this.fire(absPath, EVENTS.FILE_CREATED);
       return true;
     }
 
@@ -491,7 +500,7 @@ export class Watcher {
       return false;
     }
 
-    this.fire();
+    this.fire(absPath, EVENTS.FILE_CHANGED);
     return true;
   }
 
@@ -508,7 +517,7 @@ export class Watcher {
 
       // If the directory has changed (including being deleted or created).
       if (! _.isEqual(info.contents, newContents)) {
-        this.fire();
+        this.fire(infos[0].absPath, EVENTS.DIR_CONTENTS_CHANGED);
         return true;
       }
     }
@@ -549,7 +558,7 @@ export class Watcher {
 
     if (files.statOrNull(absPath)) {
       if (this.mustNotExist(absPath)) {
-        this.fire();
+        this.fire(absPath);
         return;
       }
 
@@ -566,7 +575,7 @@ export class Watcher {
 
     } else {
       if (this.mustBeAFile(absPath)) {
-        this.fire();
+        this.fire(absPath);
         return;
       }
 
@@ -618,7 +627,7 @@ export class Watcher {
               err.code === "ENOTDIR") {
             // The directory was removed or changed type since we called
             // this._updateStatForWatch, so we fire unconditionally.
-            this.fire();
+            this.fire(absPath, EVENTS.DIR_REMOVED);
             return;
           }
           throw err;
@@ -681,17 +690,17 @@ export class Watcher {
       // has conflicting expectations.
       if (stat.isFile()) {
         if (mustNotExist) {
-          this.fire();
+          this.fire(absPath);
         }
       } else if (stat.isDirectory()) {
         if (mustNotExist || mustBeAFile) {
-          this.fire();
+          this.fire(absPath);
         }
       } else {
         // Neither a file nor a directory, so treat as non-existent.
         stat = null;
         if (mustBeAFile) {
-          this.fire();
+          this.fire(absPath);
         }
       }
 
@@ -702,19 +711,19 @@ export class Watcher {
     } else if (stat && stat.isFile()) {
       entry.lastStat = stat;
       if (! lastStat || ! lastStat.isFile()) {
-        this.fire();
+        this.fire(absPath, EVENTS.FILE_CREATED);
       }
 
     } else if (stat && stat.isDirectory()) {
       entry.lastStat = stat;
       if (! lastStat || ! lastStat.isDirectory()) {
-        this.fire();
+        this.fire(absPath, EVENTS.DIR_CREATED);
       }
 
     } else {
       entry.lastStat = stat = null;
       if (lastStat) {
-        this.fire();
+        this.fire(absPath);
       }
     }
 
@@ -780,10 +789,10 @@ export class Watcher {
     });
   }
 
-  private fire() {
+  private fire(absPath?: String, event?: String) {
     if (this.stopped) return;
     this.stop();
-    this.onChange();
+    this.onChange(absPath, event);
   }
 
   stop() {
@@ -797,6 +806,10 @@ export class Watcher {
     });
     this.watches = Object.create(null);
   }
+}
+
+Watcher.explain = (...args) => {
+  console.log("ONCHANGE", ...args);
 }
 
 // Given a WatchSet, returns true if it currently describes the state of the
